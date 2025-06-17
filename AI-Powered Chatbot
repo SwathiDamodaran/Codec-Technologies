@@ -1,0 +1,65 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+from transformers import pipeline
+import sqlite3
+from datetime import datetime
+import os
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# ---------- Chatbot using Transformers ----------
+class AIChatBot:
+    def __init__(self):
+        self.generator = pipeline("text-generation", model="distilgpt2")
+
+    def get_response(self, user_input):
+        prompt = f"User: {user_input}\nAI:"
+        response = self.generator(prompt, max_length=100, do_sample=True, temperature=0.7)
+        reply = response[0]['generated_text'].split("AI:")[-1].strip()
+        return reply
+
+bot = AIChatBot()
+
+# ---------- SQLite Database ----------
+DB_PATH = "chat_logs.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_input TEXT,
+            bot_response TEXT,
+            timestamp TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def log_chat(user_input, bot_response):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO chat_logs (user_input, bot_response, timestamp)
+        VALUES (?, ?, ?)
+    ''', (user_input, bot_response, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+# Initialize DB on startup
+init_db()
+
+# ---------- API Schema ----------
+class Message(BaseModel):
+    user_input: str
+
+# ---------- Endpoint ----------
+@app.post("/chat/")
+def chat(msg: Message):
+    response = bot.get_response(msg.user_input)
+    log_chat(msg.user_input, response)
+    return {"response": response}
+
+uvicorn chatbot_app:app --reload
