@@ -62,4 +62,4 @@ def chat(msg: Message):
     log_chat(msg.user_input, response)
     return {"response": response}
 
-uvicorn chatbot_app:app --reload
+
