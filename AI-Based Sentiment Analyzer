@@ -1,0 +1,65 @@
+from flask import Flask, render_template_string, request
+from transformers import pipeline
+from pymongo import MongoClient
+
+# Initialize sentiment analysis pipeline
+sentiment_pipeline = pipeline("sentiment-analysis")
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Setup MongoDB (ensure MongoDB is running locally)
+client = MongoClient("mongodb://localhost:27017/")
+db = client["SentimentDB"]
+collection = db["reviews"]
+
+# HTML template string for rendering (no separate file needed)
+html_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Sentiment Analyzer</title>
+</head>
+<body>
+    <h2>Enter your review:</h2>
+    <form method="POST">
+        <textarea name="review" rows="5" cols="60" required></textarea><br><br>
+        <input type="submit" value="Analyze Sentiment">
+    </form>
+
+    {% if result %}
+        <h3>Result:</h3>
+        <p><strong>Review:</strong> {{ result.review }}</p>
+        <p><strong>Sentiment:</strong> {{ result.sentiment }}</p>
+        <p><strong>Confidence Score:</strong> {{ result.score }}</p>
+    {% endif %}
+</body>
+</html>
+"""
+
+# Flask route
+@app.route("/", methods=["GET", "POST"])
+def index():
+    sentiment_result = None
+
+    if request.method == "POST":
+        review = request.form["review"]
+
+        # Analyze sentiment
+        result = sentiment_pipeline(review)[0]
+        label, score = result['label'], round(result['score'], 3)
+
+        # Save to MongoDB
+        collection.insert_one({
+            "review": review,
+            "sentiment": label,
+            "score": score
+        })
+
+        sentiment_result = {"review": review, "sentiment": label, "score": score}
+
+    return render_template_string(html_template, result=sentiment_result)
+
+# Run the Flask app
+if __name__ == "__main__":
+    app.run(debug=True)
